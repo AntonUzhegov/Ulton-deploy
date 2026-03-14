@@ -16,24 +16,45 @@ services:
       - ./init:/docker-entrypoint-initdb.d
     networks:
       - courses-network
-    # healthcheck:      # Полностью отключено
-    #   test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-    #   interval: 30s
-    #   timeout: 10s
-    #   retries: 10
-    #   start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: courses-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - courses-network
+    command: >
+      redis-server 
+      --appendonly yes 
+      ${REDIS_PASSWORD:+--requirepass ${REDIS_PASSWORD}}
+    # healthcheck:
+    #   test: ["CMD", "redis-cli", "ping"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 3
 
   backend:
     build: ../Ulton-backend
     container_name: courses-backend
     restart: unless-stopped
     depends_on:
-      - postgres    # Упрощено - просто зависит от postgres, без условия
+      - postgres
+      - redis
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      # PostgreSQL
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      # Redis
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: ${REDIS_PORT:-6379}
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # Email
       GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD}
       APP_ADMIN_EMAIL: ${APP_ADMIN_EMAIL}
     ports:
@@ -60,3 +81,6 @@ networks:
 
 volumes:
   postgres_data:
+    name: courses-postgres-data
+  redis_data:
+    name: courses-redis-data
